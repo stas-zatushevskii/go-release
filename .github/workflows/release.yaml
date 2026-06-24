@@ -22,31 +22,50 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.5"
+          go-version-file: go.mod
 
       - name: Generate version
         run: |
-          # Формат версии:
-          # YYYYMMDD_HHMM
-          # Пример: 20260518_1030
-          VERSION=$(date -u +'%Y%m%d_%H%M')
+          # BUILD_VERSION is used in archive names and inside the binary.
+          # RELEASE_VERSION is used for the git tag and must be SemVer.
+          BUILD_VERSION=$(date -u +'%Y%m%d_%H%M')
+          RELEASE_VERSION="0.0.$(date -u +'%Y%m%d%H%M')"
 
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "Generated version: $VERSION"
+          echo "BUILD_VERSION=$BUILD_VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=$RELEASE_VERSION" >> "$GITHUB_ENV"
+          echo "Generated build version: $BUILD_VERSION"
+          echo "Generated release version: $RELEASE_VERSION"
+
+      - name: Check go mod
+        run: |
+          go mod tidy
+          if [ -n "$(git status --porcelain -- go.mod go.sum)" ]; then
+            git status --short -- go.mod go.sum
+            exit 1
+          fi
+
+      - name: Run tests
+        run: go test -count=1 ./...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12
+          args: --timeout=5m ./...
 
       - name: Create git tag
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
+          git tag "v${RELEASE_VERSION}"
+          git push origin "v${RELEASE_VERSION}"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean --skip=validate
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
