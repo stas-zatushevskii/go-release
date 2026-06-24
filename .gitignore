@@ -1,0 +1,5 @@
+# GoReleaser output
+dist/
+
+# IDE files
+.idea/
